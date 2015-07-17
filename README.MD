@@ -107,6 +107,8 @@ Note one important caveat which is that `msg.unregister` will only work correctl
 
 0.1 release, not particularly well-tested. Use at your own risk.
 
+[![Build Status](https://drone.io/github.com/saffron-technology/vertx-eventbusbridge/status.png)](https://drone.io/github.com/saffron-technology/vertx-eventbusbridge/latest)
+
 ## Installation
 
 Since it is early days, download the git project and run `mvn jar:jar` to get something you can add to your Java project.
