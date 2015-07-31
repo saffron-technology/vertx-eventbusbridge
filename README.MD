@@ -118,3 +118,7 @@ The latest build is available here
 ## Feedback
 
 Open a ticket or send an email to beders (at) saffrontech (dot) com
+
+## License
+
+Licensed under Apache License 2.0. See LICENSE file
