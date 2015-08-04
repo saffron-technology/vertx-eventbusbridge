@@ -221,7 +221,7 @@ public class EventBusBridge {
         return webSocket != null;
     }
 
-    class EventBusMessage<T> implements Message<T> {
+    public class EventBusMessage<T> implements Message<T> {
         String address;
         String replyAddress;
         T body;
