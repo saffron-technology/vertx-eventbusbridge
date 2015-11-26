@@ -13,11 +13,11 @@ EventBusBridge is the main class to use. Start with the connect method and take 
 ### Simple Example
 
 Call the static connect method with an URI and a connection handler.
-Since connecting to the event bus is asynchronous, the EventBusBridge instance to use for registering message handlers and sending messages `eb` is being passed
-in as parameter for the connection handler and is ready for registering handlers and sending messages.
-You should not be using the EventBusBridge instance returned by connect before `isOpen` returns true which is why it is recommended to only interact with 
-it in the connection handler as seen below:
 
+You should not be using the EventBusBridge instance returned by connect before `isOpen` returns true.
+The best way to guarantee this is to access the EvenBusBridge inside the connection handler.
+
+Here's an example that opens a connection to the Vert.x event bus via the SockJS service, registers a message handler and publishes a text message.
 
 ```java
 EventBusBridge.connect(URI.create("http://localhost:8765/bridge"), eb -> {
@@ -49,7 +49,7 @@ vertx.createHttpServer().requestHandler(router::accept).listen(8765, (res) -> {
 ```
 
 Registering handlers comes in two flavors `EventHandler` and `MessageHandler`.
-This boils down to you having to store the reference to the EventBusBridge somewhere or it being passed back to you.
+`EventHandler` in addition to the message payload also gives you access to the `EventBusBridge` instance which might be more convenient in some cases.
 Here's an example that shows the difference:
 
 ```java
@@ -105,15 +105,20 @@ Note one important caveat which is that `msg.unregister` will only work correctl
 
 ## Status
 
-0.1 release, not particularly well-tested. Use at your own risk.
+0.1 release, not particularly well-tested. Use at your own risk. While the internal data structures are thread-safe there is currently no synchronization for writing to the internal websocket.
 
 [![Build Status](https://drone.io/github.com/saffron-technology/vertx-eventbusbridge/status.png)](https://drone.io/github.com/saffron-technology/vertx-eventbusbridge/latest)
 
 ## Installation
 
 Since it is early days, download the git project and run `mvn jar:jar` to get something you can add to your Java project.
-
+The latest build is available here
+(https://drone.io/github.com/saffron-technology/vertx-eventbusbridge/files)
 
 ## Feedback
 
 Open a ticket or send an email to beders (at) saffrontech (dot) com
+
+## License
+
+Licensed under Apache License 2.0. See LICENSE file
