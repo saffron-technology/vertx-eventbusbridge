@@ -6,7 +6,6 @@ import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.DeliveryOptions;
-import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.WebSocket;
@@ -35,13 +34,40 @@ public class EventBusBridge {
         return connect(endPoint, onOpenHandler, MAX_SOCKET_FRAME_SIZE);
     }
 
-    public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize) {
-        return new EventBusBridge(endPoint, onOpenHandler, maxSocketFrameSize);
+    public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, Vertx vertx) {
+        return connect(endPoint, onOpenHandler, MAX_SOCKET_FRAME_SIZE, vertx);
     }
 
-    private EventBusBridge(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize) {
-        vertx = Vertx.vertx();
-        vertx.createHttpClient(new HttpClientOptions().setMaxWebsocketFrameSize(maxSocketFrameSize)).websocket(endPoint.getPort(), endPoint.getHost(), endPoint.getPath() + "/websocket", ws -> {
+    /**
+     * Use this static method to connect through a proxy.
+     * @param port port to use
+     * @param host the host to connect to
+     * @param endPoint the actual endpoint. Use an absolute URL when connecting through a proxy.
+     * @param onOpenHandler
+     * @param vertx
+     * @return
+     */
+    public static EventBusBridge connect(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, Vertx vertx) {
+        return connect(port, host, endPoint, onOpenHandler, MAX_SOCKET_FRAME_SIZE, vertx);
+    }
+
+    public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize) {
+        return connect(endPoint, onOpenHandler, maxSocketFrameSize, null);
+    }
+
+    public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize, Vertx vertx) {
+        return connect(-1, null, endPoint, onOpenHandler, maxSocketFrameSize, vertx);
+    }
+
+    public static EventBusBridge connect(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize, Vertx vertx) {
+        return new EventBusBridge(port == -1 ? endPoint.getPort() : port,
+                (host == null || host.isEmpty()) ? endPoint.getHost() : host,
+                endPoint, onOpenHandler, maxSocketFrameSize, Optional.ofNullable(vertx));
+    }
+
+    private EventBusBridge(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize, Optional<Vertx> aVertx) {
+        vertx = aVertx.orElse(Vertx.vertx());
+        vertx.createHttpClient(new HttpClientOptions().setMaxWebsocketFrameSize(maxSocketFrameSize)).websocket(port, host, endPoint.toString() + "/websocket", ws -> {
             webSocket = ws;
             ws.handler(this::bufferReceived);
             ws.closeHandler(it -> {
