@@ -8,6 +8,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.WebSocket;
 import io.vertx.core.json.JsonObject;
 
@@ -30,12 +31,30 @@ public class EventBusBridge {
 
     static final int MAX_SOCKET_FRAME_SIZE = 2*(int)Math.pow(2,18); // 512K max payload
 
+    /** Create an event bus bridge using an absolute URL and default socket frame size (512K). */
     public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler) {
-        return connect(endPoint, onOpenHandler, MAX_SOCKET_FRAME_SIZE);
+        return connect(-1, null, endPoint, onOpenHandler, null, null);
     }
 
+    /** Create an event bus bridge using an absolute or relative URL with additional options.
+     * Note: If a relative URL is provided, defaultPort and defaultHost from options will be used!
+     * @param endPoint
+     * @param onOpenHandler
+     * @param options http options. If you are connecting through SSL to a server with a self-signed certificate, use setTrustAll and verifyHost options.
+     * @return
+     */
+    public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, HttpClientOptions options) {
+        return connect(-1, null, endPoint, onOpenHandler, options, null);
+    }
+
+    /**
+     * Provide your own Vertx instance.
+     * @see EventBusBridge#connect(URI, Handler)
+     *
+     */
+
     public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, Vertx vertx) {
-        return connect(endPoint, onOpenHandler, MAX_SOCKET_FRAME_SIZE, vertx);
+        return connect(-1, null, endPoint, onOpenHandler, null, vertx);
     }
 
     /**
@@ -44,11 +63,24 @@ public class EventBusBridge {
      * @param host the host to connect to
      * @param endPoint the actual endpoint. Use an absolute URL when connecting through a proxy.
      * @param onOpenHandler
-     * @param vertx
+     * @param vertx a vertx instance (optional)
      * @return
      */
     public static EventBusBridge connect(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, Vertx vertx) {
-        return connect(port, host, endPoint, onOpenHandler, MAX_SOCKET_FRAME_SIZE, vertx);
+        return connect(port, host, endPoint, onOpenHandler, null, vertx);
+    }
+
+    /**
+     * Use this static method to connect through a proxy.
+     * @param port port to use
+     * @param host the host to connect to
+     * @param endPoint the actual endpoint. Use an absolute URL when connecting through a proxy.
+     * @param onOpenHandler
+     * @param options
+     * @return
+     */
+    public static EventBusBridge connect(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, HttpClientOptions options) {
+        return connect(port, host, endPoint, onOpenHandler, options, null);
     }
 
     public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize) {
@@ -56,18 +88,65 @@ public class EventBusBridge {
     }
 
     public static EventBusBridge connect(URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize, Vertx vertx) {
-        return connect(-1, null, endPoint, onOpenHandler, maxSocketFrameSize, vertx);
+        return connect(-1, null, endPoint, onOpenHandler, new HttpClientOptions().setMaxWebsocketFrameSize(maxSocketFrameSize), vertx);
     }
 
-    public static EventBusBridge connect(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize, Vertx vertx) {
-        return new EventBusBridge(port == -1 ? endPoint.getPort() : port,
-                (host == null || host.isEmpty()) ? endPoint.getHost() : host,
-                endPoint, onOpenHandler, maxSocketFrameSize, Optional.ofNullable(vertx));
+    public static EventBusBridge connect(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, HttpClientOptions options, Vertx vertx) {
+        HttpClientOptions actualOptions = options == null ? new HttpClientOptions().setMaxWebsocketFrameSize(MAX_SOCKET_FRAME_SIZE) : options;
+        int actualPort = guessPort(port, endPoint, actualOptions);
+        String actualHost = guessHost(host, endPoint, actualOptions);
+        actualOptions.setSsl(guessSsl(endPoint, options));
+
+        return new EventBusBridge(actualPort,
+                actualHost,
+                endPoint, onOpenHandler, actualOptions, Optional.ofNullable(vertx));
     }
 
-    private EventBusBridge(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, int maxSocketFrameSize, Optional<Vertx> aVertx) {
+    /** Guess port: It is either set explicitly, taken from the absolute URL or taken from the default options */
+    private static int guessPort(int port, URI endPoint, HttpClientOptions options) {
+        if (port != -1) return port;
+        if (endPoint.isAbsolute()) {
+            if (endPoint.getPort() == -1) {
+                return portFromScheme(endPoint.getScheme());
+            } else {
+                return endPoint.getPort();
+            }
+        } else {
+            return options.getDefaultPort();
+        }
+    }
+
+    /** Guess host:  It is either set explicitly, taken from the absolute URL or taken from the default options */
+    private static String guessHost(String host, URI endPoint, HttpClientOptions actualOptions) {
+        if (host == null || host.isEmpty()) {
+            if (endPoint.isAbsolute()) {
+                return endPoint.getHost();
+            } else {
+                return actualOptions.getDefaultHost();
+            }
+        } else {
+            return host;
+        }
+    }
+
+    /** Guess SSL: Either taken from scheme or set directly in options */
+    private static boolean guessSsl(URI endPoint, HttpClientOptions options) {
+        if (endPoint.isAbsolute()) {
+            return endPoint.getScheme().equals("https");
+        } else {
+            return options.isSsl();
+        }
+    }
+
+
+    private static int portFromScheme(String scheme) {
+        return scheme.equals("https") ? 443 : 80;
+    }
+
+    private EventBusBridge(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, HttpClientOptions options, Optional<Vertx> aVertx) {
+
         vertx = aVertx.orElse(Vertx.vertx());
-        vertx.createHttpClient(new HttpClientOptions().setMaxWebsocketFrameSize(maxSocketFrameSize)).websocket(port, host, endPoint.toString() + "/websocket", ws -> {
+        vertx.createHttpClient(options).websocket(port, host, endPoint.toString() + "/websocket", ws -> {
             webSocket = ws;
             ws.handler(this::bufferReceived);
             ws.closeHandler(it -> {

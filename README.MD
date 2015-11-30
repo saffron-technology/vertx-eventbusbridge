@@ -4,7 +4,9 @@ This is an implementation of the event bus bridge that allows Java applications 
 The API mimics the one used in `vertxbus.js`.
 Internally, vert.x is used for websocket communication to the SockJS service that governs which event bus addresses are available.
 
-Why would I use this? You can use this in cases you don't want to join a Vert.x cluster for event bus communication.
+### Why would I use this? 
+
+If you would like to send or received messages on the Vert.x event bus using SockJS/websocket communication.
 
 ## Usage
 
@@ -28,7 +30,7 @@ EventBusBridge.connect(URI.create("http://localhost:8765/bridge"), eb -> {
 });
 ```
 
-For this example to work, a SockJS service needs to run that allows incoming and outgoing messages on the `test` address.
+For this example to work, a SockJS service needs to run on the server side that allows incoming and outgoing messages on the `test` address.
 Here's an example:
 
 ```java
@@ -102,10 +104,28 @@ eb.registerHandler("test", msg -> { System.out.println("Got your message. Now le
 ```
 Note one important caveat which is that `msg.unregister` will only work correctly if used while the handler is being called.
 
+### Using Proxies
+
+v1.1 added `connect` methods to specify the host and port to connect to as well as the URL to retrieve.
+To connect via a `proxyHost` at `proxyPort`, call
+
+```
+EventBusBridge.connect(proxyPort, proxyHost, url, eb -> {...}, options);
+```
+
+Make sure the URL is an absolute URL in this case.
+
+### Using SSL
+
+v1.2 added support for SSL. 
+Use a `https` URL or pass your own `new HttpOptions().setSsl(true)` options.
+Depending on your needs, specify a trust store. Check the Vert.x docs for details.
+
 
 ## Status
 
-0.1 release, not particularly well-tested. Use at your own risk. While the internal data structures are thread-safe there is currently no synchronization for writing to the internal websocket.
+1.2 - support for SSL. Use `new HttpOptions().setSsl(true).setVerifyHost(false)` if you need to connect to a server with a self-signed certificate. See EventBusBridgeSSLTest. 
+ Tested with Vert.x 3.0.0 and 3.1.0
 
 [![Build Status](https://drone.io/github.com/saffron-technology/vertx-eventbusbridge/status.png)](https://drone.io/github.com/saffron-technology/vertx-eventbusbridge/latest)
 
@@ -117,7 +137,7 @@ The latest build is available here
 
 ## Feedback
 
-Open a ticket or send an email to beders (at) saffrontech (dot) com
+Open a ticket or send an email to jochen.bedersdorfer (at) intel (dot) com
 
 ## License
 
