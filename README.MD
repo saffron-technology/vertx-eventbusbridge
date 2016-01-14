@@ -124,6 +124,8 @@ Depending on your needs, specify a trust store. Check the Vert.x docs for detail
 
 ## Status
 
+1.3 - bug fix release. Unnecessary Vertx.vertx() calls removed
+
 1.2 - support for SSL. Use `new HttpOptions().setSsl(true).setVerifyHost(false)` if you need to connect to a server with a self-signed certificate. See EventBusBridgeSSLTest. 
  Tested with Vert.x 3.0.0 and 3.1.0
 

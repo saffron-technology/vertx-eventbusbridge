@@ -7,6 +7,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.WebSocket;
@@ -26,6 +27,7 @@ public class EventBusBridge {
     Vertx vertx;
     WebSocket webSocket;
     long pingTimerID;
+    HttpClient client;
     ConcurrentHashMap<String, List<DefaultHandler<?>>> handlers = new ConcurrentHashMap<>();
     ConcurrentHashMap<String, DefaultHandler<?>> replyHandlers = new ConcurrentHashMap<>();
 
@@ -145,8 +147,8 @@ public class EventBusBridge {
 
     private EventBusBridge(int port, String host, URI endPoint, io.vertx.core.Handler<EventBusBridge> onOpenHandler, HttpClientOptions options, Optional<Vertx> aVertx) {
 
-        vertx = aVertx.orElse(Vertx.vertx());
-        vertx.createHttpClient(options).websocket(port, host, endPoint.toString() + "/websocket", ws -> {
+        vertx = aVertx.orElseGet(() -> Vertx.vertx());
+        client = vertx.createHttpClient(options).websocket(port, host, endPoint.toString() + "/websocket", ws -> {
             webSocket = ws;
             ws.handler(this::bufferReceived);
             ws.closeHandler(it -> {
@@ -288,6 +290,9 @@ public class EventBusBridge {
             webSocket.close();
             webSocket = null;
         }
+        /*if (client != null) {
+            client.close();
+        }*/
     }
 
     private void sendMessage(String sendOrPublish, String address, Object message, DefaultHandler<?> replyHandler) {
