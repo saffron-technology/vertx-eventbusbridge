@@ -22,6 +22,9 @@ import java.util.concurrent.atomic.LongAdder;
 
 import static org.junit.Assert.*;
 
+/**
+ * Created by beders on 6/25/15.
+ */
 public class EventBusBridgeSSLTest {
     static Vertx vertx;
     LongAdder counter = new LongAdder();
@@ -111,7 +114,15 @@ public class EventBusBridgeSSLTest {
         CountDownLatch latch = new CountDownLatch(2);
         LongAdder adder = new LongAdder();
         bridge = EventBusBridge.connect(URI.create("https://localhost:8765/bridge"), eb -> {
-            EventBusBridgeTest.registerHandlerInPublish(latch, adder, eb);
+            eb.registerHandler("test", msg -> {
+                assertNotNull(msg);
+                adder.increment();
+                latch.countDown();
+            }).registerHandler("test", msg -> {
+                assertNotNull(msg);
+                adder.increment();
+                latch.countDown();
+            });
             eb.publish("test", "hello");
         }, localSSLOptions());
         assertTrue(latch.await(5, TimeUnit.SECONDS));
@@ -173,7 +184,17 @@ public class EventBusBridgeSSLTest {
         CountDownLatch latch = new CountDownLatch(2);
         LongAdder adder = new LongAdder();
         bridge = EventBusBridge.connect(URI.create("https://localhost:8765/bridge"), eb -> {
-            EventBusBridgeTest.registerHandlerInPublishJson(latch, adder, eb);
+            eb.registerHandler("test", msg -> {
+                assertNotNull(msg);
+                assertEquals("world", msg.asJson().body().getString("hello"));
+                adder.increment();
+                latch.countDown();
+            }).registerHandler("test", (EventBusBridge.EventBusMessage<JsonObject> msg) -> {
+                assertNotNull(msg);
+                assertEquals("world", msg.body().getString("hello"));
+                adder.increment();
+                latch.countDown();
+            });
             eb.publish("test", new JsonObject().put("hello", "world"));
         }, localSSLOptions());
         assertTrue(latch.await(5, TimeUnit.SECONDS));
@@ -232,7 +253,14 @@ public class EventBusBridgeSSLTest {
         CountDownLatch latch = new CountDownLatch(1);
 
         bridge = EventBusBridge.connect(URI.create("https://localhost:8765/bridge"), eb -> {
-            EventBusBridgeTest.registerHandlerInUnregisterSelf(latch, eb);
+            eb.registerHandler("test", msg -> {
+                System.out.println("EventBusBridgeTest.testUnregisterSelf");
+                assertEquals("hello", msg.body());
+                msg.unregister();
+                eb.registerHandler("test", msg2 -> {
+                    latch.countDown();
+                });
+            });
             eb.send("test", "hello");
             eb.send("test", "second hello"); // should not be called
 
@@ -257,7 +285,7 @@ public class EventBusBridgeSSLTest {
     }
 
     @Test
-    public void testClose() {
+    public void testClose() throws Exception {
         bridge = EventBusBridge.connect(URI.create("https://localhost:8765/bridge"), eb -> {
             eb.close();
             assertFalse(eb.isOpen());
