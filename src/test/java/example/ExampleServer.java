@@ -10,6 +10,9 @@ import java.util.concurrent.CountDownLatch;
 
 import static org.junit.Assert.assertEquals;
 
+/**
+ * Created by beders on 7/17/15.
+ */
 public class ExampleServer {
     Vertx vertx;
 
@@ -50,4 +53,7 @@ public class ExampleServer {
         System.out.println("Server listening on port 8765");
     }
 
+    public static void main(String... args) throws InterruptedException {
+        new ExampleServer().createServer();
+    }
 }

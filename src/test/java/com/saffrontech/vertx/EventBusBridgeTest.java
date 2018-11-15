@@ -1,9 +1,12 @@
 package com.saffrontech.vertx;
 
-import example.ExampleServer;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
+import io.vertx.ext.web.Router;
+import io.vertx.ext.web.handler.sockjs.BridgeOptions;
+import io.vertx.ext.web.handler.sockjs.PermittedOptions;
+import io.vertx.ext.web.handler.sockjs.SockJSHandler;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -16,6 +19,9 @@ import java.util.concurrent.atomic.LongAdder;
 
 import static org.junit.Assert.*;
 
+/**
+ * Created by beders on 6/25/15.
+ */
 public class EventBusBridgeTest {
     static Vertx vertx;
     LongAdder counter = new LongAdder();
@@ -23,7 +29,40 @@ public class EventBusBridgeTest {
 
     @BeforeClass
     public static void createServer() throws InterruptedException {
-        new ExampleServer().createServer();
+        vertx = Vertx.vertx();
+        CountDownLatch latch = new CountDownLatch(1);
+        Router router = Router.router(vertx);
+
+        // events specific to THOPs are made available over the bridge
+        SockJSHandler sockJSHandler = SockJSHandler.create(vertx);
+        BridgeOptions options = new BridgeOptions();
+        options.addOutboundPermitted(new PermittedOptions().setAddress("test")).
+                addInboundPermitted(new PermittedOptions().setAddress("test")).
+                addOutboundPermitted(new PermittedOptions().setAddress("end")).
+                addInboundPermitted(new PermittedOptions().setAddress("end")).
+                addInboundPermitted(new PermittedOptions().setAddress("reply")).
+                addOutboundPermitted(new PermittedOptions().setAddress("replyTest"));
+
+        sockJSHandler.bridge(options);
+
+        router.route("/bridge/*").handler(sockJSHandler);
+        // for reply test
+        vertx.eventBus().consumer("reply", msg -> {
+            vertx.eventBus().send("replyTest", "replyToMe", reply -> {
+                assertEquals("bubu", reply.result().body().toString());
+                reply.result().reply("ok", replyOfreply -> {
+                    assertEquals("roger", replyOfreply.result().body().toString());
+                });
+                msg.reply("ok");
+                vertx.eventBus().send("test", "ok");
+            });
+        });
+        vertx.createHttpServer().requestHandler(router::accept).listen(8765, (res) -> {
+            latch.countDown();
+        });
+
+        latch.await();
+        System.out.println("Server listening on port 8765");
     }
 
     @AfterClass
@@ -68,23 +107,19 @@ public class EventBusBridgeTest {
         CountDownLatch latch = new CountDownLatch(2);
         LongAdder adder = new LongAdder();
         bridge = EventBusBridge.connect(URI.create("http://localhost:8765/bridge"), eb -> {
-            registerHandlerInPublish(latch, adder, eb);
+            eb.registerHandler("test", msg -> {
+                assertNotNull(msg);
+                adder.increment();
+                latch.countDown();
+            }).registerHandler("test", msg -> {
+                assertNotNull(msg);
+                adder.increment();
+                latch.countDown();
+            });
             eb.publish("test", "hello");
         });
         assertTrue(latch.await(5, TimeUnit.SECONDS));
         assertEquals(adder.longValue(), 2);
-    }
-
-    static void registerHandlerInPublish(CountDownLatch latch, LongAdder adder, EventBusBridge eb) {
-        eb.registerHandler("test", msg -> {
-            assertNotNull(msg);
-            adder.increment();
-            latch.countDown();
-        }).registerHandler("test", msg -> {
-            assertNotNull(msg);
-            adder.increment();
-            latch.countDown();
-        });
     }
 
     @Test
@@ -142,25 +177,21 @@ public class EventBusBridgeTest {
         CountDownLatch latch = new CountDownLatch(2);
         LongAdder adder = new LongAdder();
         bridge = EventBusBridge.connect(URI.create("http://localhost:8765/bridge"), eb -> {
-            registerHandlerInPublishJson(latch, adder, eb);
+            eb.registerHandler("test", msg -> {
+                assertNotNull(msg);
+                assertEquals("world", msg.asJson().body().getString("hello"));
+                adder.increment();
+                latch.countDown();
+            }).registerHandler("test", (EventBusBridge.EventBusMessage<JsonObject> msg) -> {
+                assertNotNull(msg);
+                assertEquals("world", msg.body().getString("hello"));
+                adder.increment();
+                latch.countDown();
+            });
             eb.publish("test", new JsonObject().put("hello", "world"));
         });
         assertTrue(latch.await(5, TimeUnit.SECONDS));
         assertEquals(adder.longValue(), 2);
-    }
-
-    static void registerHandlerInPublishJson(CountDownLatch latch, LongAdder adder, EventBusBridge eb) {
-        eb.registerHandler("test", msg -> {
-            assertNotNull(msg);
-            assertEquals("world", msg.asJson().body().getString("hello"));
-            adder.increment();
-            latch.countDown();
-        }).registerHandler("test", (EventBusBridge.EventBusMessage<JsonObject> msg) -> {
-            assertNotNull(msg);
-            assertEquals("world", msg.body().getString("hello"));
-            adder.increment();
-            latch.countDown();
-        });
     }
 
 
@@ -215,25 +246,20 @@ public class EventBusBridgeTest {
         CountDownLatch latch = new CountDownLatch(1);
 
         bridge = EventBusBridge.connect(URI.create("http://localhost:8765/bridge"), eb -> {
-            registerHandlerInUnregisterSelf(latch, eb);
+            eb.registerHandler("test", msg -> {
+                System.out.println("EventBusBridgeTest.testUnregisterSelf");
+                assertEquals("hello", msg.body());
+                msg.unregister();
+                eb.registerHandler("test", msg2 -> {
+                    latch.countDown();
+                });
+            });
             eb.send("test", "hello");
             eb.send("test", "second hello"); // should not be called
 
         });
         assertTrue(latch.await(5, TimeUnit.SECONDS));
     }
-
-    static void registerHandlerInUnregisterSelf(CountDownLatch latch, EventBusBridge eb) {
-        eb.registerHandler("test", msg -> {
-            System.out.println("EventBusBridgeTest.testUnregisterSelf");
-            assertEquals("hello", msg.body());
-            msg.unregister();
-            eb.registerHandler("test", msg2 -> {
-                latch.countDown();
-            });
-        });
-    }
-
     @Test
     public void testHandlers() throws Exception {
         CountDownLatch latch = new CountDownLatch(2);
@@ -248,6 +274,7 @@ public class EventBusBridgeTest {
             eb.publish("test", "hello");
         });
         assertTrue(latch.await(5, TimeUnit.SECONDS));
+
     }
 
     @Test
