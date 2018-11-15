@@ -393,11 +393,12 @@ public class EventBusBridge {
         return this;
     }
 
-    void close() {
+    public void close() {
         if (webSocket != null) {
             webSocket.close();
             webSocket = null;
         }
+        vertx.close();
     }
 
     private void sendMessage(String sendOrPublish,
@@ -433,7 +434,7 @@ public class EventBusBridge {
         }
     }
 
-    boolean isOpen() {
+    public boolean isOpen() {
         return webSocket != null;
     }
 
